@@ -6,12 +6,33 @@ import "./CarbonAllowanceManager.sol";
 
 error CarbonTrader__NotEnoughDeposit();
 error CarbonTrader__TradeNotExist();
-error CarbonTrader__TransferFailed();
 error CarbonTrader__RefundFailed();
 error CarbonTrader__ParamsError();
 error CarbonTrader__FinalizeAuctionFailed();
 
 contract CarbonAuctionTrade is CarbonAllowanceManager {
+    event NewAuctionTrade(
+        address indexed seller,
+        uint256 amount,
+        uint256 startTimeStamp,
+        uint256 endTimeStamp,
+        uint256 minimumBidAmount,
+        uint256 initPriceOfUint
+    );
+
+    event Deposit(address indexed buyer, string tradeID, uint256 amount);
+
+    event RefundDeposit(address indexed buyer, string tradeID, uint256 amount);
+
+    event FinalizeAuctionAndTransferCarbon(
+        address indexed buyer,
+        string tradeID,
+        uint256 allowanceAmount,
+        uint256 additionalAmountToPay
+    );
+
+    event WithdrawAuctionAmount(address indexed user, uint256 amount);
+
     struct AuctionTrade {
         address seller;
         uint256 sellAmount;
@@ -45,7 +66,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
             initPriceOfUint <= 0 ||
             minimumBidAmount > amount
         ) revert CarbonTrader__ParamsError();
-        auctionTrade storage newTrade = s_auctionTrades[tradeID];
+        AuctionTrade storage newTrade = s_auctionTrades[tradeID];
         newTrade.seller = msg.sender;
         newTrade.sellAmount = amount;
         newTrade.startTimeStamp = startTimeStamp;
@@ -73,7 +94,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         view
         returns (address, uint256, uint256, uint256, uint256, uint256)
     {
-        auctionTrade storage currentTrade = s_auctionTrades[tradeID];
+        AuctionTrade storage currentTrade = s_auctionTrades[tradeID];
         return (
             currentTrade.seller,
             currentTrade.sellAmount,
@@ -89,7 +110,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         uint256 amount,
         string memory info
     ) public {
-        auctionTrade storage currentTrade = s_auctionTrades[tradeID];
+        AuctionTrade storage currentTrade = s_auctionTrades[tradeID];
         if (currentTrade.seller == address(0))
             revert CarbonTrader__TradeNotExist();
         if (amount < currentTrade.initPriceOfUint)
@@ -109,7 +130,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
     }
 
     function refundDeposit(string memory tradeID) public {
-        auctionTrade storage currentTrade = s_auctionTrades[tradeID];
+        AuctionTrade storage currentTrade = s_auctionTrades[tradeID];
         uint256 depositAmount = currentTrade.deposits[msg.sender];
         currentTrade.deposits[msg.sender] = 0;
 

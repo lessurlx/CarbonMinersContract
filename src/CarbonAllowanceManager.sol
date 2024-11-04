@@ -2,10 +2,11 @@
 pragma solidity ^0.8.18;
 
 error CarbonTrader__NotOwner();
+error CarbonTrader__TransferFailed();
 
 contract CarbonAllowanceManager {
-    mapping(address => uint256) private s_addressToAllowances;
-    mapping(address => uint256) private s_frozenAllowances;
+    mapping(address => uint256) internal s_addressToAllowances;
+    mapping(address => uint256) internal s_frozenAllowances;
     address private immutable i_owner;
     constructor() {
         i_owner = msg.sender;
