@@ -102,6 +102,7 @@ contract CarbonMarketTrade is CarbonAllowanceManager {
             addressToAllowances[msg.sender] += (oldAmount - amount);
             frozenAllowances[msg.sender] -= (oldAmount - amount);
         }
+	trade.amount = amount;
 
         emit UpdateMarketTrade(msg.sender, amount, oldAmount, priceOfUint, oldPriceOfUint);
     }
