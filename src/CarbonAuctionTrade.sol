@@ -13,9 +13,12 @@ error AuctionTrade__ParamsError(
 );
 error AuctionTrade__TradeNotExist(uint256 tradeID);
 error AuctionTrade__NotEnoughDeposit(uint256 needed, uint256 amount);
-error AuctionTrade__UploadMsgMismatch(uint256 bidderLength, uint256 amountLength);
-error AuctionTrade_NotBidWinner(uint256 tradeID, address operator);
-error AuctionTrade_NotDeposit(uint256 tradeID, address operator);
+error AuctionTrade__USDTNotEnough(uint256 needed, uint256 amount);
+error AuctionTrade__UploadMsgMismatch(uint256 bidderLength, uint256 amountLength, uint256 priceOfUintLength);
+error AuctionTrade__NotBidWinner(uint256 tradeID, address operator);
+error AuctionTrade__NotDeposit(uint256 tradeID, address operator);
+error AuctionTrade__TradeEnd();
+error AuctionTrade__TradeNotEnd();
 
 contract CarbonAuctionTrade is CarbonAllowanceManager {
     event NewAuctionTrade(
@@ -40,6 +43,11 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
 
     event WithdrawAuctionAmount(address indexed user, uint256 amount);
 
+    struct BidWinner {
+        uint256 amount;
+        uint256 priceOfUint;
+    }
+
     struct AuctionTrade {
         address seller;
         uint256 amount;
@@ -50,11 +58,12 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         mapping(address => uint256) deposits;
         mapping(address => string) bidInfos;
         mapping(address => string) bidSecrets;
-        mapping(address => uint256) bidWinner;
+        mapping(address => BidWinner) bidWinner;
     }
     mapping(uint256 => AuctionTrade) public auctionTrades;
     mapping(address => uint256) public auctionAmount;
     IERC20 private immutable i_usdtToken;
+
     constructor(address usdtTokenAddress) {
         i_usdtToken = IERC20(usdtTokenAddress);
     }
@@ -68,6 +77,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         uint256 minimumBidAmount,
         uint256 initPriceOfUint
     ) public {
+        if(!isMember(msg.sender)) revert CarbonManager__NotMember(msg.sender);
         // 检查参数
         if (
             amount <= 0 ||
@@ -87,6 +97,7 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         newTrade.initPriceOfUint = initPriceOfUint;
 
         // 更新数据
+        if(amount > addressToAllowances[msg.sender]) revert CarbonManager__AllowanceNotEnough(msg.sender, addressToAllowances[msg.sender], amount);
         addressToAllowances[msg.sender] -= amount;
         frozenAllowances[msg.sender] += amount;
 
@@ -106,9 +117,12 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         uint256 amount,
         string memory info
     ) public {
+        if(!isMember(msg.sender)) revert CarbonManager__NotMember(msg.sender);
         AuctionTrade storage currentTrade = auctionTrades[tradeID];
         if (currentTrade.seller == address(0))
             revert AuctionTrade__TradeNotExist(tradeID);
+        if (currentTrade.endTimeStamp < block.timestamp) 
+            revert AuctionTrade__TradeEnd();
         if (amount < currentTrade.initPriceOfUint)
             revert AuctionTrade__NotEnoughDeposit(currentTrade.initPriceOfUint, amount);
 
@@ -128,8 +142,12 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
     // 退回竞标时存入的钱
     function refundDeposit(uint256 tradeID) public {
         AuctionTrade storage currentTrade = auctionTrades[tradeID];
-        if (currentTrade.seller == address(0)) revert AuctionTrade__TradeNotExist(tradeID);
-        if(currentTrade.deposits[msg.sender] == 0) revert AuctionTrade_NotDeposit(tradeID, msg.sender);
+        if (currentTrade.seller == address(0)) 
+            revert AuctionTrade__TradeNotExist(tradeID);
+        if (currentTrade.endTimeStamp < block.timestamp) 
+            revert AuctionTrade__TradeNotEnd();
+        if(currentTrade.deposits[msg.sender] == 0) 
+            revert AuctionTrade__NotDeposit(tradeID, msg.sender);
 
         uint256 depositAmount = currentTrade.deposits[msg.sender];
         currentTrade.deposits[msg.sender] = 0;
@@ -170,27 +188,34 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
     function uploadBidWinner(
         uint256 tradeID, 
         address[] memory bidder, 
-        uint256[] memory amount
+        uint256[] memory amount,
+        uint256[] memory priceOfUint
     ) public onlyOwner {
-        if(bidder.length != amount.length) revert AuctionTrade__UploadMsgMismatch(bidder.length, amount.length);
+        if(bidder.length != amount.length || amount.length != priceOfUint.length) 
+            revert AuctionTrade__UploadMsgMismatch(bidder.length, amount.length, priceOfUint.length);
         AuctionTrade storage currentTrade = auctionTrades[tradeID];
         if (currentTrade.seller == address(0)) revert AuctionTrade__TradeNotExist(tradeID);
 
         // 遍历数组并存储数据
         for(uint i = 0; i < bidder.length; i++) {
-            currentTrade.bidWinner[bidder[i]] = amount[i];
+            currentTrade.bidWinner[bidder[i]].amount = amount[i];
+            currentTrade.bidWinner[bidder[i]].priceOfUint = priceOfUint[i];
         }
     }
 
     function finalizeAuctionAndTransferCarbon(
         uint256 tradeID,
-        uint256 allowanceAmount,
         uint256 additionalAmountToPay
     ) public {
         AuctionTrade storage currentTrade = auctionTrades[tradeID];
         if (currentTrade.seller == address(0)) revert AuctionTrade__TradeNotExist(tradeID);
         // 检查是否中标
-        if(currentTrade.bidWinner[msg.sender] == 0) revert AuctionTrade_NotBidWinner(tradeID, msg.sender);
+        if(currentTrade.bidWinner[msg.sender].amount == 0) revert AuctionTrade__NotBidWinner(tradeID, msg.sender);
+        // 检查尾款够不够
+        uint256 amount = currentTrade.bidWinner[msg.sender].amount;
+        uint256 priceOfUnit = currentTrade.bidWinner[msg.sender].priceOfUint;
+        if((amount*priceOfUnit - currentTrade.initPriceOfUint) > additionalAmountToPay)
+            revert AuctionTrade__USDTNotEnough(amount*priceOfUnit - currentTrade.initPriceOfUint, additionalAmountToPay);
         // 获取保证金
         uint256 depositAmount = auctionTrades[tradeID].deposits[msg.sender];
         auctionTrades[tradeID].deposits[msg.sender] = 0;
@@ -198,9 +223,9 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
         address seller = auctionTrades[tradeID].seller;
         auctionAmount[seller] += (depositAmount + additionalAmountToPay);
         // 扣除卖家的冻结碳额度
-        frozenAllowances[seller] -= allowanceAmount;
+        frozenAllowances[seller] -= amount;
         // 增加买家的碳额度
-        addressToAllowances[msg.sender] += allowanceAmount;
+        addressToAllowances[msg.sender] += amount;
 
         bool success = i_usdtToken.transferFrom(
             msg.sender,
@@ -208,11 +233,13 @@ contract CarbonAuctionTrade is CarbonAllowanceManager {
             additionalAmountToPay
         );
         if (!success) revert ERC20__TransferFailed(msg.sender, address(this), additionalAmountToPay);
+        // 防止重复清算
+        delete currentTrade.bidWinner[msg.sender];
 
         emit FinalizeAuctionAndTransferCarbon(
             msg.sender,
             tradeID,
-            allowanceAmount,
+            amount,
             additionalAmountToPay
         );
     }
