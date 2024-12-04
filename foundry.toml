@@ -2,9 +2,14 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+solc = "0.8.21"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
-remappings = ["@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"]
+remappings = [
+	"@openzeppelin/contracts=lib/openzeppelin-contracts/contracts",
+	"@openzeppelin/contracts-upgradeable=lib/openzeppelin-contracts-upgradeable/contracts",
+	"@verax-attestation-registry/verax-contracts/contracts=lib/linea-attestation-registry/contracts/src"
+	]
 
 
 [rpc_endpoints]
