@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "./CarbonAuctionTrade.sol";
 import "./CarbonMarketTrade.sol";
+
 contract CarbonTrader is CarbonAuctionTrade, CarbonMarketTrade {
     constructor(
         address usdtTokenAddress

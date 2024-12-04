@@ -1,60 +1,49 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-error CarbonTrader__NotOwner();
-error CarbonTrader__TransferFailed();
+error CarbonManager__NotOwner(address owner, address operator);
+error CarbonManager__AllowanceNotEnough(address operator, uint256 balance, uint256 needed);    // 碳排放额不够
+error ERC20__TransferFailed(address from, address to, uint256 amount);
 
 contract CarbonAllowanceManager {
-    mapping(address => uint256) internal s_addressToAllowances;
-    mapping(address => uint256) internal s_frozenAllowances;
-    address private immutable i_owner;
+    mapping(address => uint256) public addressToAllowances;
+    mapping(address => uint256) public frozenAllowances;
+    address public owner;
+
     constructor() {
-        i_owner = msg.sender;
+        owner = msg.sender;
     }
     modifier onlyOwner() {
-        if (msg.sender != i_owner) {
-            revert CarbonTrader__NotOwner();
+        if (msg.sender != owner) {
+            revert CarbonManager__NotOwner(owner, msg.sender);
         }
         _;
     }
 
-    function getAllownance(address user) public view returns (uint256) {
-        return s_addressToAllowances[user];
+    function updateOwner(address _newOwner) public onlyOwner {
+        owner = _newOwner;
     }
 
-    function issueAllowance(address user, uint256 allowance) public onlyOwner {
-        s_addressToAllowances[user] += allowance;
+    function issueAllowance(address _user, uint256 _allowance) public onlyOwner {
+        addressToAllowances[_user] += _allowance;
     }
 
-    function freezeAllowance(
-        address user,
-        uint256 freezedAmount
-    ) public onlyOwner {
-        s_addressToAllowances[user] -= freezedAmount;
-        s_frozenAllowances[user] += freezedAmount;
+    function freezeAllowance(address _user, uint256 _freezedAmount) public onlyOwner {
+        addressToAllowances[_user] -= _freezedAmount;
+        frozenAllowances[_user] += _freezedAmount;
     }
 
-    function getFrozenAllowance(address user) public view returns (uint256) {
-        return s_frozenAllowances[user];
+    function unfreezeAllowance(address _user, uint256 _unfreezedAmount) public onlyOwner {
+        addressToAllowances[_user] += _unfreezedAmount;
+        frozenAllowances[_user] -= _unfreezedAmount;
     }
 
-    function unfreezeAllowance(
-        address user,
-        uint256 unfreezedAmount
-    ) public onlyOwner {
-        s_addressToAllowances[user] += unfreezedAmount;
-        s_frozenAllowances[user] -= unfreezedAmount;
+    function destoryAllowance(address _user, uint256 _destoryAmount) public onlyOwner {
+        addressToAllowances[_user] -= _destoryAmount;
     }
 
-    function destoryAllowance(
-        address user,
-        uint256 destoryAmount
-    ) public onlyOwner {
-        s_addressToAllowances[user] -= destoryAmount;
-    }
-
-    function destoryAllAllowance(address user) public onlyOwner {
-        s_addressToAllowances[user] = 0;
-        s_frozenAllowances[user] = 0;
+    function destoryAllAllowance(address _user) public onlyOwner {
+        addressToAllowances[_user] = 0;
+        frozenAllowances[_user] = 0;
     }
 }
